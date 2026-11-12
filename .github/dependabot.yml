@@ -1,0 +1,22 @@
+version: 2
+
+# Updates wait two weeks after a release before they're proposed, so a compromised version has time to be caught
+# upstream first. Same rule as adding a dependency by hand.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # One package: pygame, pinned exactly in requirements.txt.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14

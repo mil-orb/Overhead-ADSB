@@ -1,0 +1,37 @@
+# Where you live, and your Wi-Fi name. Never commit this. config.example.json is the template.
+config.json
+config.json.tmp
+
+# Written while it runs: the route cache (which flights passed your house), test scratch
+data/
+
+# Screenshots taken while working, some of them of a real screen showing real traffic
+shots/
+pi-screen.png
+*.raw
+
+# The old SD card's boot files, kept for reference on one machine
+pi-backup/
+
+# The vendor's display overlay. No license came with it, so bring your own copy (docs/pi-setup.md).
+pi/*.dtbo
+
+# Downloaded model sources for tools/bake_models.py: 200 MB, their own repos and licenses
+.models-src/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Editors and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# Assistants' local state
+.claude/

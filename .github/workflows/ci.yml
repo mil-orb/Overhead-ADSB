@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Read-only by default. Nothing here needs to write to the repo.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the oldest supported. 3.13 is what Raspberry Pi OS (trixie) ships.
+        python: ["3.11", "3.13"]
+    steps:
+      # Actions are pinned to full commit SHAs, at least two weeks old when picked. Dependabot proposes bumps.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      # One dependency, pinned to an exact version, installed from a wheel only: nothing gets to run a build script.
+      - name: Install pygame
+        run: python -m pip install --only-binary :all: -r requirements.txt
+
+      # No screen, no network: the tests use SDL's dummy video driver and made-up traffic.
+      - name: Test
+        run: python -m tests
+
+      - name: Shell scripts parse
+        run: bash -n pi/install.sh && bash -n pi/set-display.sh
+
+      # A real location must never be committed. config.json is ignored; this catches a forced add.
+      - name: No personal files
+        run: |
+          if git ls-files | grep -E '(^|/)config\.json$|^data/|^shots/|^pi-backup/|^\.models-src/|\.dtbo$'; then
+            echo "::error::A file that should stay on your machine is tracked. See .gitignore."
+            exit 1
+          fi
+
+      - name: Render the card
+        run: |
+          python -m overhead --demo --screenshot card.png --at 12
+          python -m overhead --demo --screenshot plane.png --at 30 --plane
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.python == '3.13'
+        with:
+          name: screenshots
+          path: |
+            card.png
+            plane.png
+          retention-days: 14
