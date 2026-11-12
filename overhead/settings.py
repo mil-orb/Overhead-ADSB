@@ -488,6 +488,7 @@ class Settings:
             ("HORIZON", "seg", ("horizon_deg", [("0°", 0), ("5°", 5), ("10°", 10), ("15°", 15), ("20°", 20)])),
             ("EACH PLANE", "seg", ("dwell_s", [("6 S", 6), ("10 S", 10), ("15 S", 15), ("30 S", 30)])),
             ("FOLLOW UNTIL GONE", "toggle", "follow"),
+            ("TOUCH TIPS", "button", ("SHOW", "tips")),
             ("POWER", "power", None),
         ]
         if self.can_calibrate:

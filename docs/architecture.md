@@ -47,6 +47,7 @@ flowchart LR
 | `overhead/scene.py` | The sky and ground behind the aircraft in the plane view, painted from the sun, moon and weather | `sky`, pygame |
 | `overhead/hangar.py` | The plane view: pose from live data, the software 3D renderer, the panel around it | `models`, `scene`, `board` |
 | `overhead/settings.py` | The settings sheet: rows, pages, the keyboard and keypad, its own repaint tracking | `board` |
+| `overhead/hints.py` | The touch tips screen, drawn once over a dimmed copy of the card | `board` |
 | `overhead/wifi.py` | Scan and join through `nmcli`, or stand-in networks off the Pi | nothing |
 | `overhead/device.py` | The Linux framebuffer and the evdev touch panel, read and written directly | pygame |
 | `overhead/app.py` | Config, the main loop, input, which aircraft is on the card, frame pacing | everything |

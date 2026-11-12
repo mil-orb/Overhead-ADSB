@@ -13,6 +13,7 @@ First version. Runs on a Raspberry Pi Zero W with a Velleman VMP400 3.5" touchsc
 - Flap animation from the equation of motion of a hinged plate, with two flaps in the air at once while a drum cycles.
 - Plane view: tap the card for a 3D model posed as the aircraft looks from where you are. 36 models converted from Flightradar24's and amvlab's open-source sets, and generated shapes for 213 types in all.
 - The plane view's sky follows the real one: colour by the sun's height, the sun and moon in their places (the moon in its phase), stars, cloud cover and haze from the weather feed, fields below the horizon with lights at night. The aircraft is lit to match and shows navigation lights after dark.
+- A touch tips screen on first start, and again from settings, showing what each part of the card does.
 - Settings sheet opened by a swipe up: Wi-Fi scan and join with an on-screen keyboard, location, brightness, night dimming, units, range, clock, horizon, seconds per aircraft, follow until gone, touch calibration, restart and shut down.
 - Draws straight to the Linux framebuffer and reads the touch panel from evdev, so it needs no desktop. Three-point touch calibration.
 - On a Pi Zero W a full card flip costs 21 ms of CPU a frame. Drawing is paced to what the SPI link can carry.

@@ -35,6 +35,7 @@ python -m overhead --demo --screenshot out.png --at 0.4,12      # headless: out_
 python -m overhead --demo --screenshot out.png --at 30 --plane  # the plane view
 python -m overhead --demo --screenshot out.png --at 30 --plane --sky dusk   # under another sky: day, dusk, night, overcast
 python -m overhead --demo --screenshot out.png --at 3 --settings main   # a settings page: main, show, wifi, key, loc
+python -m overhead --demo --screenshot out.png --at 12 --hints          # the touch tips screen
 python tools/media.py                             # rewrite docs/images/*.png
 python tools/model_sheet.py out.png --small B738 C172 C17       # look at aircraft models
 python tools/sky_sheet.py out.png                 # the plane view's sky and ground under five kinds of light
@@ -53,7 +54,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. The shor
 - `overhead/tracker.py`: turns aircraft into an ordered list for the card, on its own thread. The show modes live here.
 - `overhead/board.py`: the split-flap renderer. `FaceSet` holds pre-composed pictures of every half-window mid-flip; `Module` is one drum.
 - `overhead/hangar.py`: the plane view and its software 3D renderer. `overhead/models.py`: the aircraft meshes, generated or loaded from `models/`. `overhead/scene.py`: the sky and ground behind the aircraft, painted on a thread from the sun, moon and weather.
-- `overhead/settings.py`: the settings sheet. `overhead/wifi.py`: `nmcli`, or stand-in networks on a PC.
+- `overhead/settings.py`: the settings sheet. `overhead/hints.py`: the touch tips screen shown on first start. `overhead/wifi.py`: `nmcli`, or stand-in networks on a PC.
 - `overhead/device.py`: the Pi's framebuffer and touch panel, with no desktop in between.
 - `overhead/app.py`: config, input, the main loop.
 - `pi/`: the installer. `tools/`: developer tools. `tests/`: plain scripts of assertions.

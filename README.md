@@ -141,7 +141,11 @@ After the reboot it asks for three taps to calibrate the touch panel, then shows
 | Tap the right third | Next aircraft |
 | Tap the middle | Plane view. Tap again to close it, drag to look around the aircraft. |
 | Press and hold | Lock onto this aircraft until it leaves the range. The counter blinks. Hold again to let go. |
-| Swipe up from the lower half | Settings |
+| Swipe up from the lower part | Settings |
+
+<img src="docs/images/tips.png" width="360" alt="The touch tips screen: tap the sides for the previous and next aircraft, the middle for the plane, swipe up for settings">
+
+The first time it starts (after the touch calibration on a Pi) it shows these tips over the card. A tap puts them away, and Settings > Touch tips brings them back.
 
 Every target is at least a third of the screen or 56 pixels tall, and nothing depends on reaching an edge, because the screen is small, resistive and sits in a case.
 
@@ -165,6 +169,7 @@ The card rotates through up to 8 aircraft, nearest first, 10 seconds each and 15
 | Horizon | The lowest angle you can see, 0° to 20°. Default 5°. |
 | Each plane | 6, 10, 15 or 30 seconds |
 | Follow until gone | Stay on each aircraft until it leaves the range. No rotation. |
+| Touch tips | Show the tips screen again |
 | Touch | Run the calibration again |
 | Power | Restart the app, shut the Pi down |
 

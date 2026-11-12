@@ -58,6 +58,7 @@ DEFAULTS = {
     "fb_device": None,              # e.g. "/dev/fb1"; None picks the small panel
     "touch_device": None,           # e.g. "/dev/input/event0"; None finds the touch panel
     "touch_cal": None,              # written by the touch calibration screen
+    "hints_seen": False,            # the touch tips screen has been shown and tapped away
 }
 UNIT_M = {"mi": 1609.344, "km": 1000.0, "nm": 1852.0}
 MIN_DWELL = 4.0       # a newly arrived nearer aircraft waits this long before taking over
@@ -217,6 +218,7 @@ class App:
         self.backlight = Backlight()
         self.wifi = get_wifi(real=not self.shot)      # a screenshot never shows or touches real networks
         self.press = None
+        self.hints_up = False           # the touch tips screen is showing
         self.fast = False
         self.running = True
         self.sim = 1_750_000_000.0 if self.shot else None
@@ -467,6 +469,24 @@ class App:
             self.backlight.set(self.level())
 
     # ------------------------------------------------------------ input -----
+    def show_hints(self):
+        """Put the touch tips over the card until the next tap."""
+        from . import hints
+        self.press = None
+        self.hints_up = True
+        self.present([hints.draw(self.scr, self.board, self.scr.copy())])
+
+    def close_hints(self):
+        self.hints_up = False
+        if not self.cfg.get("hints_seen"):
+            self.cfg["hints_seen"] = True
+            try:
+                save_config(self.cfg)
+            except Exception as e:
+                print("could not save config:", e)
+        self._clock_at = self._apply_at = 0.0
+        self.present(self.board.redraw())
+
     def open_settings(self, pos=None):
         """Open settings. With `pos`, the sheet's edge starts under that finger and follows it."""
         self.press = None
@@ -497,6 +517,8 @@ class App:
         self.present(self.board.redraw())
         if st.action == "calibrate":
             self.calibrate()
+        elif st.action == "tips":
+            self.show_hints()
         elif st.action == "quit":
             self.running = False
         elif st.action == "restart":
@@ -517,6 +539,11 @@ class App:
         pg, st, view = self.pg, self.settings, self.view
         if e.type == pg.QUIT:
             self.running = False
+        elif self.hints_up:
+            # The tap that puts the tips away does nothing else: closing on the lift, so the
+            # finger that went down on the tips doesn't land on the card.
+            if e.type in (pg.MOUSEBUTTONUP, pg.KEYDOWN):
+                self.close_hints()
         elif e.type == pg.KEYDOWN:
             if e.key == pg.K_ESCAPE:
                 if st.visible:
@@ -658,6 +685,8 @@ class App:
         self.present(self.board.redraw())
         if self.touch and (self.args.calibrate or not self.cfg.get("touch_cal")):
             self.calibrate()                       # first run on the Pi, or asked for
+        if not self.cfg.get("hints_seen"):
+            self.show_hints()                      # once, so the touch zones aren't a guessing game
         while self.running:
             moving = self.board.busy or self.settings.visible or self.view.visible or self.press
             rate = fps if moving else 20
@@ -668,6 +697,10 @@ class App:
             dt = min(0.2, clock.tick(rate) / 1000.0)
             for e in pg.event.get():
                 self.event(e)
+            if self.hints_up:
+                if stats:
+                    stats.add(0.0, 0.0, [], self.fb)
+                continue                           # a still picture: nothing to draw until it is tapped away
             if self.press and time.time() - self.press[1] >= LONG_PRESS:
                 self.press = None
                 self.toggle_lock()                 # press and hold: lock onto this aircraft, or let it go
@@ -716,6 +749,9 @@ class App:
                     rects = self.tick_view(1 / 30)
                     if self.view.off >= self.H and not rects:
                         break
+            if getattr(self.args, "hints", False):
+                from . import hints
+                hints.draw(self.scr, self.board, self.scr.copy())
             if self.args.settings:
                 st = self.settings
                 st.open(self.scr.copy(), self.args.settings)
@@ -751,6 +787,7 @@ def main():
     ap.add_argument("--at", default="8", help="seconds into the run to capture; comma separated for several")
     ap.add_argument("--settings", help="with --screenshot: capture this settings page (main, wifi, key, loc, show)")
     ap.add_argument("--plane", action="store_true", help="with --screenshot: capture the plane view")
+    ap.add_argument("--hints", action="store_true", help="with --screenshot: capture the touch tips screen")
     ap.add_argument("--sky", choices=("day", "dusk", "night", "overcast"), default="day",
                     help="with --demo: the light and weather the plane view is drawn in")
     args = ap.parse_args()

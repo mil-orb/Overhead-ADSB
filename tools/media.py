@@ -143,6 +143,10 @@ write_apng(os.path.join(OUT, "flip.png"), frames, 83)
 show(a, "RCH871")
 save(a, "military.png")
 
+a.show_hints()
+save(a, "tips.png")
+a.close_hints()
+run(a, 0.5)
 
 
 def plane_view(name, flight="UAL328"):
