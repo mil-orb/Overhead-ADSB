@@ -35,7 +35,7 @@ jobs:
 
       # One dependency, pinned to an exact version, installed from a wheel only: nothing gets to run a build script.
       - name: Install pygame
-        run: python -m pip install --only-binary :all: -r requirements.txt
+        run: python -m pip install --only-binary ":all:" -r requirements.txt
 
       # No screen, no network: the tests use SDL's dummy video driver and made-up traffic.
       - name: Test
