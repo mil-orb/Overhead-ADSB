@@ -6,7 +6,7 @@ Notable changes, newest first. Versions follow `__version__` in `overhead/__init
 
 Faster on the Pi, with the same pictures.
 
-- Writes to the panel happen on their own thread and no longer hold Python's lock while the SPI driver is busy. The main loop used to stop for up to 160 ms on each one. Pushes now take 1.4 ms on average and the card moves at 17 to 26 frames a second while flaps turn, up from 2 to 17. A full-flip frame costs about 4 ms more CPU for the extra copies.
+- Writes to the panel happen on their own thread and no longer hold Python's lock while the SPI driver is busy. The main loop used to freeze for up to 168 ms on each one; in the same test on a Pi Zero the worst is now 5 ms. A push from the main loop went from 12 to 48 ms on average to 1.4 ms. A full flip still shows at about 8 updates a second at 16 MHz, which is the SPI link's limit. A full-flip frame costs about 4 ms more CPU for the extra copies.
 - The plane view is no longer drawn in the background while it is closed. That took up to 1.5 s of the main loop at a time, about a fifth of every minute. It is drawn when you open it, quick while it slides in and smoothed when it stops.
 - The cloud field is kept in `data/` after the first build instead of being made on every start (6 s on a Pi Zero, 1.7 MB on disk).
 - Clouds are laid onto the sky in strips. One blit of the whole layer used to freeze the card for half a second on each repaint. A card frame during a sky repaint now takes 30 ms, worst 84 ms, down from 73 ms and 510 ms.
