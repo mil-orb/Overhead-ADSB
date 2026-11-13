@@ -52,6 +52,8 @@ After the reboot the board comes up in under a minute and asks for three taps to
 
 Until a location is set it shows demo traffic. Swipe up, tap Location, and enter your latitude and longitude. Two decimal places is enough: it puts you within about a kilometre, which is all the app sends to the data feeds anyway.
 
+With a location set, the plane view downloads aerial photographs of your area once, 1 to 3 MB from USGS (EOX outside the US) and NASA, and bends them into its panorama in a background process at the lowest priority. Until that is done it shows drawn fields. To fetch no imagery, set `"ground_photos": false` in `config.json`.
+
 ## What the installer changes
 
 Five things, all printed as it goes.

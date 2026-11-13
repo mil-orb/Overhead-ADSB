@@ -109,6 +109,24 @@ assert west[0] > east[0] + 30 and west[0] > west[2], "sunset glows on the sun's 
 grey = at(sc.paint(overcast), 300.0, 60.0)
 assert max(grey) - min(grey) < 40, "overcast: %s" % (grey,)
 
+# clouds follow the weather's cover, and look about as cloudy high in the sky as low
+def clouded(cover):
+    sky = Sky(**{**DEMO_SKY, "cloud_low": cover, "cloud_high": 0.0, "cloud_total": cover})
+    clear = pygame.image.tobytes(sc.paint(Sky(**{**DEMO_SKY, "cloud_low": 0.0, "cloud_high": 0.0, "cloud_total": cover})), "RGB")
+    cloudy = pygame.image.tobytes(sc.paint(sky), "RGB")
+    out = []
+    for e0, e1 in ((40, 70), (12, 30)):
+        y0, y1 = int(sc._y(e1)), int(sc._y(e0))
+        idx = range(y0 * sc.pw * 3, y1 * sc.pw * 3, 3 * 17)
+        out.append(sum(1 for i in idx if cloudy[i] - clear[i] > 40) / len(idx))
+    return out
+
+
+assert clouded(0.0) == [0.0, 0.0]
+few, half = clouded(0.08), clouded(0.5)
+assert all(f < 0.2 for f in few) and all(0.3 < h < 0.75 for h in half), (few, half)
+assert abs(half[0] - half[1]) < 0.2, "as cloudy high as low: %s" % (half,)
+
 # the same sky paints the same picture, so a repaint never flickers
 assert pygame.image.tostring(sc.paint(dusk), "RGB") == pygame.image.tostring(pano_dusk, "RGB")
 

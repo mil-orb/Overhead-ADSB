@@ -18,7 +18,7 @@ sys.path.insert(0, ROOT)
 
 import pygame  # noqa: E402
 
-from overhead import feeds  # noqa: E402
+from overhead import feeds, ground, scene  # noqa: E402
 from overhead import app as appmod  # noqa: E402
 from overhead.tracker import Frame  # noqa: E402
 
@@ -38,6 +38,16 @@ def new_app():
     a.cfg["range_mi"] = 40                # the demo's aircraft are spread over 40 miles
     a.start_engine()
     a.engine.step(a.sim)
+    # The plane view's ground: aerial photographs of the made-up place, if they have been made
+    # (python tools/sky_sheet.py out.png --ground). Never fetched from here: without them the
+    # pictures show the drawn fields.
+    sc = a.view.scene
+    cache = os.path.join(ROOT, "data", "ground")
+    a.ground = ground.Ground(40.0, -100.0, cache, sc.ppd, sc.pw, scene.TOP, online=False)
+    if ground.load(cache, 40.0, -100.0, sc.ppd, sc.pw, scene.TOP) is None:
+        print("no ground pictures in data/ground: the plane view shows drawn fields")
+        a.ground = None
+    sc.use_ground(a.ground)
     return a
 
 
@@ -149,9 +159,10 @@ a.close_hints()
 run(a, 0.5)
 
 
-def plane_view(name, flight="UAL328"):
+def plane_view(name, flight="UAL328", tilt=0.0):
     show(a, flight)
     a.open_view()
+    a.view.tilt = tilt                    # as if dragged: negative looks down
     a.view.scene.wait()                   # the sky is painted on a thread
     a.view.set(a.view.info)
     run(a, 1.5)
@@ -171,6 +182,8 @@ for sky_name in ("dusk", "night"):
     plane_view("plane-view-%s.png" % sky_name, low.plane.flight)
 a.engine.demo_sky = "day"
 run(a, 6)
+# Looking down past the low aircraft, for the ground (aerial photographs, if data/ground has them)
+plane_view("plane-view-ground.png", low.plane.flight, tilt=-(low.elev + 4.0))
 
 for page in ("main", "show", "wifi", "key"):
     a.settings.open(a.scr.copy(), page)

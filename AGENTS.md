@@ -14,7 +14,7 @@ Some things here act on a real device in someone's house, and some files hold wh
 - SSH to, scan for, or log in to any host other than the one the person gave you as `OVERHEAD_PI`. Other devices on their network are none of this project's business.
 - Run anything with `sudo` on the Pi beyond `systemctl restart|stop|start overhead.service`, `systemctl reboot` and `systemctl poweroff`, which the installer allows without a password. Anything else that needs root is for the person to run. Never type or ask for a password.
 - Commit `config.json`, `data/`, `shots/`, `pi-backup/` or `.models-src/`. `config.json` holds the owner's coordinates and Wi-Fi name. They are in `.gitignore`: don't force-add them, and don't paste their contents into code, tests, docs, commit messages or issues.
-- Put a real location, flight log, network name or address in a test, a doc or an image. Use the demo traffic and made-up coordinates (the tests use 40.0, -100.0).
+- Put a real location, flight log, network name or address in a test, a doc or an image. Use the demo traffic and made-up coordinates (the tests use 40.0, -100.0). A plane view at a real location shows aerial photographs of it.
 - Download anything without asking first: packages, fonts, models, firmware, data sets. Say what, from where and how big.
 - Add a model to `models/` without its source, license and credit in the file and in `models/README.md`. Never add one whose license doesn't allow redistribution.
 
@@ -39,6 +39,7 @@ python -m overhead --demo --screenshot out.png --at 12 --hints          # the to
 python tools/media.py                             # rewrite docs/images/*.png
 python tools/model_sheet.py out.png --small B738 C172 C17       # look at aircraft models
 python tools/sky_sheet.py out.png                 # the plane view's sky and ground under five kinds of light
+python tools/sky_sheet.py out.png --ground        # with aerial photographs of the made-up place (about 2 MB download the first time)
 python tools/bench.py                             # time the heavy paths on this machine
 python tools/pi.py deploy | screen out.png | logs | status | test | bench
 ```
@@ -53,7 +54,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. The shor
 - `overhead/feeds.py`: the network sources (aircraft, routes, weather), the on-disk route cache, and the demo traffic. Its parsers are the only door for network data.
 - `overhead/tracker.py`: turns aircraft into an ordered list for the card, on its own thread. The show modes live here.
 - `overhead/board.py`: the split-flap renderer. `FaceSet` holds pre-composed pictures of every half-window mid-flip; `Module` is one drum.
-- `overhead/hangar.py`: the plane view and its software 3D renderer. `overhead/models.py`: the aircraft meshes, generated or loaded from `models/`. `overhead/scene.py`: the sky and ground behind the aircraft, painted on a thread from the sun, moon and weather.
+- `overhead/hangar.py`: the plane view and its software 3D renderer. `overhead/models.py`: the aircraft meshes, generated or loaded from `models/`. `overhead/ground.py`: aerial photographs and night lights for the plane view's ground, fetched once per location and built in a low-priority child process. `overhead/scene.py`: the sky and ground behind the aircraft, painted on a thread from the sun, moon and weather.
 - `overhead/settings.py`: the settings sheet. `overhead/hints.py`: the touch tips screen shown on first start. `overhead/wifi.py`: `nmcli`, or stand-in networks on a PC.
 - `overhead/device.py`: the Pi's framebuffer and touch panel, with no desktop in between.
 - `overhead/app.py`: config, input, the main loop.
@@ -64,7 +65,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. The shor
 These hold everywhere. A change that breaks one won't be merged.
 
 1. **Standard library and pygame only.** No new dependency unless the person asks. Then: exact version, out at least 14 days, reason in the commit message.
-2. **Everything from the network is untrusted.** Aircraft data enters through `parse_aircraft`, routes through `route_entry` and `clean_route`, weather through `Weather.refresh`. Each checks types, ranges and finiteness (JSON allows `NaN` and `1e999`) and cuts text to short printable strings. A bad record is dropped, never passed on, and never costs the records around it. The cache file on disk is checked the same way when it is read. Wi-Fi names from a scan are untrusted too: they reach `nmcli` only as separate arguments, never through a shell. If you add a field or a source, add its hostile cases to `tests/test_feeds.py`.
+2. **Everything from the network is untrusted.** Aircraft data enters through `parse_aircraft`, routes through `route_entry` and `clean_route`, weather through `Weather.refresh`. Each checks types, ranges and finiteness (JSON allows `NaN` and `1e999`) and cuts text to short printable strings. A bad record is dropped, never passed on, and never costs the records around it. The cache file on disk is checked the same way when it is read. Map tiles enter through `ground.read_tile`, which checks the size, the signature and a 256 x 256 header (`feeds.image_header`) before pygame decodes anything. Wi-Fi names from a scan are untrusted too: they reach `nmcli` only as separate arguments, never through a shell. If you add a field or a source, add its hostile cases to `tests/test_feeds.py`.
 3. **Nothing blocks the main loop.** Network and tracking run on the tracker's thread. Wi-Fi commands run on a worker. The plane view's sky is painted on its own thread. Animation is driven by elapsed time, so a slow frame skips positions and keeps the right speed.
 4. **Count the lines.** The screen receives about 2,080 lines a second over SPI. Redraw only what changed and return those rectangles. A change that repaints the whole screen every frame will run at 6 frames a second on the device, however it looks on your PC. State the cost of anything you add: `python tools/bench.py` prints it.
 5. **No blending in the flap path.** Moving flaps are plain copies of pre-composed pictures in the screen's own pixel format. That is what took a full card flip from 80 ms a frame to 21 ms on a Pi Zero. Don't add a per-flap overlay, alpha or scale.
@@ -83,7 +84,7 @@ These hold everywhere. A change that breaks one won't be merged.
 
 **Add a settings row.** Add a tuple to `rows` in `Settings._page_main`, add its key to `DEFAULTS` in `app.py` (or it won't be saved), and react to it in `App.after_settings` if it needs more than a redraw. Row indexes in `tests/test_ui.py` shift when you insert one: fix them.
 
-**Change how the sky looks.** `scene.py`. `sky_colours` is the table of sky colours by sun height, `tone` the light on the aircraft, `Scene.paint` the panorama. Look at all five skies at once with `python tools/sky_sheet.py out.png`. `Scene.state` decides when a repaint is needed: if you add an input, add it there or the picture won't update. Painting takes about 2 seconds on a Pi Zero, on a thread, so keep per-pixel Python loops out of it.
+**Change how the sky looks.** `scene.py`. `sky_colours` is the table of sky colours by sun height, `tone` the light on the aircraft, `Scene.paint` the panorama. Look at all five skies at once with `python tools/sky_sheet.py out.png`. `Scene.state` decides when a repaint is needed: if you add an input, add it there or the picture won't update. Painting takes about 2 seconds on a Pi Zero, on a thread, so keep per-pixel Python loops out of it. Clouds come from `cloud_field`, built once per run; `_clouds` turns the weather's cover into thresholds, and `tests/test_scene.py` checks that a cover fraction shows as about that much cloud high and low. The real ground is `ground.py`: look at it with `tools/sky_sheet.py --ground`.
 
 **Change a visibility factor.** `visibility` in `sky.py`. Write the case in `tests/test_sky.py` first (the `score` helper takes wingspan, ground distance and altitude), watch it fail, then change the rule. Update the table in the README and [docs/visibility.md](docs/visibility.md).
 

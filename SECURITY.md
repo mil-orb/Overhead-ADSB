@@ -1,10 +1,10 @@
 # Security
 
-Overhead runs unattended on a Pi on a home network. It reads four public data sources, lets you join Wi-Fi networks from its touchscreen, and its installer adds one narrow `sudo` rule. A bug in any of those matters.
+Overhead runs unattended on a Pi on a home network. It reads data from seven public web hosts (aircraft, routes, weather and map imagery), lets you join Wi-Fi networks from its touchscreen, and its installer adds one narrow `sudo` rule. A bug in any of those matters.
 
 ## Reporting
 
-Use [private vulnerability reporting](https://github.com/mil-orb/overhead-ADSB/security/advisories/new). Please don't open a public issue. Include the version (`overhead/__init__.py`), the Pi model and OS, and steps or data that show the problem. Leave your location and network name out.
+Use [private vulnerability reporting](https://github.com/mil-orb/Overhead-ADSB/security/advisories/new). Please don't open a public issue. Include the version (`overhead/__init__.py`), the Pi model and OS, and steps or data that show the problem. Leave your location and network name out.
 
 You'll get a reply within 7 days.
 
@@ -12,10 +12,10 @@ You'll get a reply within 7 days.
 
 Anything that lets:
 
-- a response from a data feed, or a Wi-Fi network name broadcast nearby, run code, write outside the app's `data/` folder, or crash the display in a loop
+- a response from a data feed or a map tile server, or a Wi-Fi network name broadcast nearby, run code, write outside the app's `data/` folder, or crash the display in a loop
 - the app's user become root through the installer's `sudo` rule, its systemd unit or its helper script
 - the Wi-Fi password end up in a log, a file other than NetworkManager's own, or anywhere on screen after it is submitted
-- the owner's exact coordinates leave the device (requests should carry them rounded to 0.01 degree)
+- the owner's exact coordinates leave the device (requests carry them rounded to 0.01 degree, and which map tiles are fetched depends only on that rounded position)
 
 ## Known and accepted
 
@@ -23,9 +23,10 @@ Anything that lets:
 
 - **The Wi-Fi password is passed to `nmcli` as a command-line argument.** For the moment the command runs, another local user on the Pi could read it from the process list. The device is meant to be a single-user appliance.
 - **Whoever can touch the screen can change settings**, join a Wi-Fi network and shut the Pi down. There is no lock.
+- **Map tiles go through an image decoder.** pygame's PNG and JPEG decoders read bytes from USGS, EOX and NASA. Before decoding, a tile must be under 300 KB, start with a PNG or JPEG signature, and give its size as 256 x 256 in its header, which rules out decompression bombs. A bug in the decoder itself is past what those checks can catch. The decoding happens in a separate process at the lowest CPU priority, which writes only under `data/ground`.
 - **Feeds are plain HTTPS to third parties.** They see the Pi's IP address and your rounded coordinates every few seconds.
 - **The password field shows what you type** unless you press HIDE, because a resistive screen makes typing blind unreliable. A screen capture taken with `tools/pi.py screen` while the keyboard is open contains it.
-- **A picture of the live screen locates you.** The flight, its distance and bearing, and the time are enough to work back to within about a kilometre using public flight history. Use `--demo` for pictures you share.
+- **A picture of the live screen locates you.** The flight, its distance and bearing, and the time are enough to work back to within about a kilometre using public flight history. Use `--demo` for pictures you share. A picture of the plane view at your real location gives it away more directly: its ground is aerial photography of the land around you.
 
 ## Supported versions
 

@@ -7,11 +7,11 @@ Thanks for looking. Overhead has to stay smooth on a Raspberry Pi Zero, so the b
 Python 3.11 or newer and pygame. Nothing else.
 
 ```bash
-git clone https://github.com/mil-orb/overhead-ADSB
+git clone https://github.com/mil-orb/Overhead-ADSB
 ```
 
 ```bash
-cd overhead-ADSB && python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+cd Overhead-ADSB && python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 ```
 
 ```bash
@@ -34,17 +34,17 @@ If you do have the hardware, `python tools/pi.py deploy` copies your working tre
 
 ## Reporting bugs
 
-Use the [bug report template](https://github.com/mil-orb/overhead-ADSB/issues/new/choose). The most useful things are which Pi and screen, the OS version, and the last lines of `journalctl -u overhead`. Leave your coordinates out: nobody needs them to fix a bug.
+Use the [bug report template](https://github.com/mil-orb/Overhead-ADSB/issues/new/choose). The most useful things are which Pi and screen, the OS version, and the last lines of `journalctl -u overhead`. Leave your coordinates out: nobody needs them to fix a bug.
 
 Security problems go through [SECURITY.md](SECURITY.md), not public issues.
 
 ## Suggesting features
 
-Open a [feature request](https://github.com/mil-orb/overhead-ADSB/issues/new?template=feature_request.md) and describe the situation, not only the feature. Some things are out of scope on purpose:
+Open a [feature request](https://github.com/mil-orb/Overhead-ADSB/issues/new?template=feature_request.md) and describe the situation, not only the feature. Some things are out of scope on purpose:
 
 - Anything that needs an account, an API key or a paid data source.
 - Dependencies beyond pygame.
-- Live video, maps with tiles, or anything else that repaints the whole screen every frame. The SPI link can't carry it.
+- Live video, scrolling maps, or anything else that repaints the whole screen every frame. The SPI link can't carry it.
 
 ## Making changes
 

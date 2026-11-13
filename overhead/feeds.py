@@ -1,4 +1,5 @@
-"""Network sources: aircraft positions, callsign routes, weather. Plus a simulated feed for demos.
+"""Network sources: aircraft positions, callsign routes, weather, and the checks on map
+imagery. Plus a simulated feed for demos.
 
 Free, keyless APIs only. Coordinates sent out are rounded to 0.01 degree (about 1 km),
 which is plenty for a 40 nm query and keeps the exact address off the wire.
@@ -10,6 +11,7 @@ import math
 import os
 import queue
 import re
+import struct
 import threading
 import time
 import urllib.error
@@ -46,6 +48,66 @@ def http_json(url: str, timeout: float = 8.0, limit: int = MAX_BODY):
             if size > limit or time.monotonic() > deadline:
                 raise ValueError("response too large or too slow")
     return json.loads(b"".join(parts).decode("utf-8", "replace"))
+
+
+def http_bytes(url: str, timeout: float = 10.0, limit: int = 300_000) -> bytes:
+    """GET a URL and return the body, with the same size and time limits as http_json.
+    Only for images, which are checked with image_header before anything decodes them."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "image/png,image/jpeg"})
+    deadline = time.monotonic() + 3 * timeout
+    parts, size = [], 0
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        while True:
+            chunk = r.read(65536)
+            if not chunk:
+                break
+            size += len(chunk)
+            parts.append(chunk)
+            if size > limit or time.monotonic() > deadline:
+                raise ValueError("response too large or too slow")
+    return b"".join(parts)
+
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+JPEG_MAGIC = b"\xff\xd8\xff"
+_SOF = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+def image_header(data) -> tuple[str, int, int] | None:
+    """("png" or "jpeg", width, height) read from an image file's header, or None if it is
+    neither. This runs before any decoder sees the bytes: a file of a few kB can claim to be
+    a picture of 60000 x 60000, and the decoder would try to allocate it."""
+    if not isinstance(data, (bytes, bytearray)) or len(data) < 24:
+        return None
+    if data[:8] == PNG_MAGIC:
+        if data[12:16] != b"IHDR":
+            return None
+        w, h = struct.unpack(">II", data[16:24])
+        return "png", w, h
+    if data[:3] != JPEG_MAGIC:
+        return None
+    i, n = 2, len(data)
+    for _ in range(200):                       # markers before the frame header; real files have a handful
+        while i < n and data[i] == 0xFF and i + 1 < n and data[i + 1] == 0xFF:
+            i += 1                             # fill bytes
+        if i + 4 > n or data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if marker == 0xD8 or 0xD0 <= marker <= 0xD7 or marker == 0x01:
+            i += 2
+            continue
+        if marker == 0xD9 or marker == 0xDA:   # end of image or start of scan before any frame header
+            return None
+        length = struct.unpack(">H", data[i + 2:i + 4])[0]
+        if length < 2:
+            return None
+        if marker in _SOF:
+            if i + 9 > n:
+                return None
+            h, w = struct.unpack(">HH", data[i + 5:i + 9])
+            return "jpeg", w, h
+        i += 2 + length
+    return None
 
 
 def _num(v, lo=-math.inf, hi=math.inf):

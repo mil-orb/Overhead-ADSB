@@ -1,6 +1,6 @@
 # Architecture
 
-Overhead is about 5,400 lines of Python in eleven files, plus pygame. It has two threads that matter: one fetches and scores aircraft every 5 seconds, the other draws.
+Overhead is about 6,300 lines of Python in thirteen files, plus pygame. It has two threads that matter: one fetches and scores aircraft every 5 seconds, the other draws. A third paints the plane view's sky, and once per location a separate process turns map tiles into the plane view's ground.
 
 ```mermaid
 flowchart LR
@@ -8,7 +8,9 @@ flowchart LR
         A[adsb.lol<br/>airplanes.live]
         R[adsbdb.com]
         W[Open-Meteo]
+        M[USGS, EOX, NASA<br/>map tiles, once]
     end
+    GR[ground.py<br/>own process, lowest priority]
     subgraph tracker [Tracker thread]
         F[feeds.py<br/>parse and check]
         S[sky.py<br/>where is it, can you see it]
@@ -24,6 +26,8 @@ flowchart LR
     A --> F
     R --> F
     W --> F
+    M --> GR
+    GR -- "two pictures in data/ground" --> H
     F --> S --> T
     T -- "Frame (a snapshot)" --> APP
     APP --> B
@@ -45,6 +49,7 @@ flowchart LR
 | `overhead/board.py` | The split-flap renderer: fonts, faces, drums, the pre-composed flip pictures, the layout solver, the lamp and the counter | pygame |
 | `overhead/models.py` | Aircraft meshes: 213 generated from dimensions, 36 loaded from `models/*.json` | nothing |
 | `overhead/scene.py` | The sky and ground behind the aircraft in the plane view, painted from the sun, moon and weather | `sky`, pygame |
+| `overhead/ground.py` | Aerial photographs and night lights under the plane view's horizon: which tiles a location needs, checking and caching them, bending them into the panorama in a child process | `feeds`, pygame |
 | `overhead/hangar.py` | The plane view: pose from live data, the software 3D renderer, the panel around it | `models`, `scene`, `board` |
 | `overhead/settings.py` | The settings sheet: rows, pages, the keyboard and keypad, its own repaint tracking | `board` |
 | `overhead/hints.py` | The touch tips screen, drawn once over a dimmed copy of the card | `board` |
@@ -78,6 +83,7 @@ flowchart LR
 | Scene | Paints the sky panorama when the light changes | Swaps one reference when the picture is finished |
 | Touch | Blocks on the touch device, turns packets into taps | A queue |
 | Wi-Fi worker | Runs `nmcli` for a scan or a join | A result slot the settings sheet polls |
+| Ground (a process) | `python -m overhead.ground`, started once per location at the lowest CPU priority: fetches map tiles and bends them into two pictures | Files in `data/ground`, which the Scene thread loads when they appear |
 
 Nothing on the main thread waits for the network, the disk or a subprocess.
 
@@ -100,6 +106,10 @@ On the Pi there is no X, no Wayland and no SDL video driver. `device.py` memory-
 
 `scene.py` paints the sky and ground once, as a panorama of every direction, on its own thread (about 2 seconds on a Pi Zero). Showing any direction is then one copy of a window from it, which takes about a millisecond. It is repainted when the sun has moved a degree near sunrise or sunset, or the weather has changed.
 
+The clouds are two sheets of noise, low cumulus and high cirrus, each laid out flat at a fixed height and seen from below, so clouds overhead are large and the ones near the horizon small and flat. That field is built once per run (about 0.2 s on a PC). Each repaint turns the weather's cover fractions into thresholds and runs the field through byte lookup tables, so it is C work inside pygame, about 20 ms on a PC.
+
+With a location set, `ground.py` replaces the drawn fields with aerial photographs. It works out which map tiles cover the land up to 72 km out, at the detail each row of the panorama can show, fetches them once, and bends them into panorama rows as seen from 500 m up, allowing for the curve of the earth. Those two pictures (by day and the lights at night) are made in a separate low-priority process so the board keeps its frame rate, and kept in `data/ground`. Each repaint only tints them for the light, fades them out of season and lays on haze row by row.
+
 ## Configuration
 
 `config.json` in the repo folder, created the first time a setting is changed. `DEFAULTS` in `app.py` lists every key. Only those keys are saved. The file is written to a temporary name and renamed, so a power cut can't leave half a file.
@@ -108,13 +118,14 @@ It holds your coordinates, so it is in `.gitignore` and `tools/pi.py deploy` nev
 
 ## Tests
 
-`python -m tests` runs six plain scripts of assertions in about 10 seconds on a PC, with no network and no screen.
+`python -m tests` runs seven plain scripts of assertions in about 10 seconds on a PC, with no network and no screen.
 
 | File | Covers |
 |---|---|
 | `test_sky.py` | Geometry against the exact formulas, sun and moon, each visibility factor, the tracker's order, modes and range |
 | `test_feeds.py` | Hostile and broken responses: NaN, infinity, wrong types, control characters, floods, a slow or oversized body, a damaged cache file, odd Wi-Fi names |
 | `test_models.py` | Every generated type builds with its real proportions, every converted model loads with its license, the pose math, the renderer |
-| `test_scene.py` | Sky colours by time of day, the light on the aircraft, the panorama's seam, the background painting |
+| `test_scene.py` | Sky colours by time of day, the light on the aircraft, the panorama's seam, cloud cover against the weather at every height, the background painting |
+| `test_ground.py` | Image headers and hostile tiles, which tiles a location asks for, that north stays north and distances land on the right rows, building from a cache and offline |
 | `test_device.py` | Framebuffer band copying against a file, touch packet decoding, calibration |
 | `test_ui.py` | The real app, driven headless: rotation, taps, the settings sheet, joining a stand-in network, the plane view |

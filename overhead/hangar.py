@@ -27,7 +27,7 @@ import pygame
 
 from . import models
 from .board import AMBER, INK, surf
-from .scene import Scene, tone
+from .scene import HALF_FOV, Scene, tone
 
 LEVELS = 24                                         # steps of direct light per colour
 FILL = 6                                            # steps of fill light
@@ -196,7 +196,10 @@ class PlaneView:
             self._key_drawn = None          # a new sky has been painted
         key = (round(info["track"] / 2), round(info["climb"] / 2), round(info["roll"] / 3), round(info["az"] / 1.5),
                round(info["elev"] / 1.5), info["type"], info["flight"], round(self.yaw), round(self.tilt))
-        text = (info["name"], info["operator"], info["dist"], info["alt"], info["dir"], info["hdg"], info["credit"])
+        # the ground pictures' credit, while some of the ground is in the window
+        ground_credit = self.scene.credit if info["elev"] + self.tilt < HALF_FOV else ""
+        text = (info["name"], info["operator"], info["dist"], info["alt"], info["dir"], info["hdg"], info["credit"],
+                ground_credit)
         if key != self._key or text != self._text or self._key_drawn is None:
             self._key, self._text, self.dirty = key, text, True
 
@@ -321,7 +324,7 @@ class PlaneView:
 
     def _glass_art(self):
         """What makes the window look sunk into the panel: the frame's shadow falling across the
-        top and sides of the picture, and a faint sheen on the glass."""
+        top and sides of the picture."""
         if self._glass is None:
             w, h = self.scope.size
             g = surf(w, h, True)
@@ -334,10 +337,6 @@ class PlaneView:
                 pygame.draw.line(g, (0, 0, 0, a), (i, 0), (i, h))
                 pygame.draw.line(g, (0, 0, 0, a), (w - 1 - i, 0), (w - 1 - i, h))
                 pygame.draw.line(g, (0, 0, 0, a // 2), (0, h - 1 - i), (w, h - 1 - i))
-            sheen = surf(w, h, True)                        # a soft diagonal reflection
-            pygame.draw.polygon(sheen, (255, 255, 255, 8), [(w * 0.52, 0), (w * 0.70, 0), (w * 0.44, h), (w * 0.26, h)])
-            pygame.draw.polygon(sheen, (255, 255, 255, 5), [(w * 0.74, 0), (w * 0.79, 0), (w * 0.53, h), (w * 0.48, h)])
-            g.blit(sheen, (0, 0))
             self._glass = g
         return self._glass
 
@@ -411,6 +410,12 @@ class PlaneView:
         label(info["dist"], self.scope.right - round(8 * s), y, "r")
         label(info["alt"], self.scope.right - round(8 * s), y + round(14 * s), "r")
         label(info["hdg"], x, self.scope.bottom - round(16 * s))
+        ground_credit = self._text[-1]
+        if ground_credit:                           # the ground photographs' source, as their licence asks
+            sx, sy = self.scope.right - round(8 * s), self.scope.bottom - round(13 * s)
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                b.paint(art, ground_credit, small, sx + dx, sy + dy, "r", color=(0, 0, 0), alpha=110)
+            b.paint(art, ground_credit, small, sx, sy, "r", color=INK, alpha=170)
         b.paint(art, info["flight"] or info["reg"], max(8, round(11 * s)), self.pad, round(9 * s), color=INK)
         b.paint(art, "AS SEEN FROM HERE", small, W - self.pad, round(11 * s), "r", alpha=170)
         y = self.scope.bottom + round(12 * s)

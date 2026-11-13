@@ -9,7 +9,7 @@ on a 3.5" touchscreen driven by a Raspberry Pi Zero.
 
 <img src="docs/images/flip.png" width="480" alt="The card flipping from United 328, a 737-900 from San Francisco to Chicago, to Delta 1482, an A321 from Atlanta to Minneapolis">
 
-[![ci](https://github.com/mil-orb/overhead-ADSB/actions/workflows/ci.yml/badge.svg)](https://github.com/mil-orb/overhead-ADSB/actions/workflows/ci.yml)
+[![ci](https://github.com/mil-orb/Overhead-ADSB/actions/workflows/ci.yml/badge.svg)](https://github.com/mil-orb/Overhead-ADSB/actions/workflows/ci.yml)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![Raspberry Pi Zero](https://img.shields.io/badge/Raspberry%20Pi-Zero%20W-C51A4A)
 [![MIT license](https://img.shields.io/badge/code-MIT-green)](LICENSE)
@@ -22,8 +22,8 @@ on a 3.5" touchscreen driven by a Raspberry Pi Zero.
 - **It only shows what you can see.** Each aircraft is scored for your horizon, its size at that distance, haze, cloud and sun glare. A jet above an overcast doesn't make the card.
 - **Military gets called out.** An amber flap, a blinking lamp, and it jumps the queue.
 - **The flaps move like flaps.** Each one falls as a hinged plate under gravity, and drums only turn forward, so going from B to A takes the long way round.
-- **Tap the card to see the plane.** A 3D model, posed the way the real one looks from where you stand, with its heading, climb and bank, against the sky as it is right now: the time of day, the sun or moon, the cloud cover.
-- **No account, no key, no receiver.** Four free public data sources. Your coordinates are rounded to about 1 km before they leave the Pi.
+- **Tap the card to see the plane.** A 3D model, posed the way the real one looks from where you stand, with its heading, climb and bank, against the sky as it is right now: the time of day, the sun or moon, the cloud cover. Below the horizon is the land around you, from aerial photographs.
+- **No account, no key, no receiver.** Free public data and imagery only. Your coordinates are rounded to about 1 km before they leave the Pi.
 
 The catch: it runs on a slow computer talking to the screen over SPI. A full change of aircraft repaints most of the screen and shows at about 8 updates a second at the default SPI speed. Small changes, like a distance ticking over, are smooth. [Limits](#limits) has the rest.
 
@@ -72,7 +72,11 @@ Every flap goes blank and the lamp turns red. If the data feed is lost, the red 
 </tr>
 </table>
 
-The same view at sunset and at night. The sun and moon are where they are in the real sky, the clouds follow the weather feed, and the aircraft shows its red, green and white lights after dark. Drag to look around it: down far enough and the ground comes into view.
+The same view at sunset and at night. The sun and moon are where they are in the real sky, the clouds follow the weather feed's low and high cover, and the aircraft shows its red, green and white lights after dark. Drag to look around it: down far enough and the ground comes into view.
+
+Once your location is set, that ground is aerial photography of the land around you, bent into the view as it would look from 500 m up: hazier with distance, faded in winter, and lit by street lights after dark. These pictures use a made-up spot in Nebraska farmland.
+
+<img src="docs/images/plane-view-ground.png" width="480" alt="A Cessna 172 seen from the side over farmland that fades into haze toward the horizon, with the imagery credit in the corner">
 
 <table>
 <tr>
@@ -124,7 +128,7 @@ The mouse works like a finger.
 Flash Raspberry Pi OS Lite (32-bit) with Raspberry Pi Imager, setting a hostname, user, Wi-Fi and SSH in its options. A Pi Zero only has 2.4 GHz Wi-Fi. Then on the Pi:
 
 ```bash
-git clone https://github.com/mil-orb/overhead-ADSB && cd overhead-ADSB && bash pi/install.sh
+git clone https://github.com/mil-orb/Overhead-ADSB && cd Overhead-ADSB && bash pi/install.sh
 ```
 
 ```bash
@@ -216,8 +220,12 @@ All free, no keys. Check their terms before any commercial use.
 | Aircraft positions | [adsb.lol](https://adsb.lol), falling back to [airplanes.live](https://airplanes.live) | Every 5 seconds |
 | Routes and airline names | [adsbdb.com](https://www.adsbdb.com), cached on the Pi | Once per callsign |
 | Cloud and visibility | [Open-Meteo](https://open-meteo.com) | Every 10 minutes |
+| Aerial photographs for the plane view | [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map) in the US (public domain), [Sentinel-2 cloudless 2017 by EOX](https://s2maps.eu) elsewhere (CC BY 4.0) | Once per location |
+| Where the lights are at night | [NASA Black Marble](https://blackmarble.gsfc.nasa.gov) through NASA GIBS (public domain) | Once per location |
 
 Requests carry your coordinates rounded to 0.01 degree and nothing else about you. There is no server of ours and no telemetry.
+
+The map tiles are about a hundred images, 1 to 3 MB, fetched once and kept in `data/ground`. Which tiles are asked for depends only on the rounded position, and none covers less than 1.2 km. The EOX imagery's license asks for credit, which shows in the corner of the plane view. To keep the drawn fields and fetch no imagery, set `"ground_photos": false` in `config.json`.
 
 ## Limits
 
@@ -226,7 +234,8 @@ Requests carry your coordinates rounded to 0.01 degree and nothing else about yo
 - **Routes can be wrong.** They come from a callsign database. One the aircraft is nowhere near is dropped.
 - **Coverage depends on volunteers.** Positions come from other people's receivers. Rural areas have gaps, and aircraft without ADS-B don't appear.
 - **Dimming is software only** on this panel, which has no backlight control. Blacks stay slightly lit.
-- **The sky in the plane view is drawn, not photographed.** It follows the sun, the moon and the reported cloud cover. The clouds are not where the real ones are, and the ground is generic fields, not your town.
+- **The plane view's sky is drawn.** It follows the sun, the moon and the reported cloud cover, but the clouds are not where the real ones are.
+- **The plane view's ground is photographs, a few years old.** USGS imagery is from recent growing seasons, EOX's from 2017. Winter is shown by fading them, so snow doesn't appear. Until the first download finishes, and without a network, you see drawn fields.
 - **No sound**, and the flaps don't bounce when they land.
 
 ## Development

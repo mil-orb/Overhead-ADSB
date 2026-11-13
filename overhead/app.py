@@ -59,6 +59,7 @@ DEFAULTS = {
     "touch_device": None,           # e.g. "/dev/input/event0"; None finds the touch panel
     "touch_cal": None,              # written by the touch calibration screen
     "hints_seen": False,            # the touch tips screen has been shown and tapped away
+    "ground_photos": True,          # plane view: aerial photographs of your area below the horizon (False: drawn fields, nothing fetched)
 }
 UNIT_M = {"mi": 1609.344, "km": 1000.0, "nm": 1852.0}
 MIN_DWELL = 4.0       # a newly arrived nearer aircraft waits this long before taking over
@@ -296,6 +297,7 @@ class App:
     def build_board(self):
         self.board = self.Board(self.scr, self.cfg)
         self.view = self.PlaneView(self.scr, self.board, self.cfg)
+        self.view.scene.use_ground(getattr(self, "ground", None))
         self.view_hex, self._view_at = None, 0.0
         self._clock_at = self._dim_at = self._apply_at = 0.0
         self.frame = None
@@ -316,6 +318,21 @@ class App:
         self.frame = None
         if not self.shot:
             self.engine.start()
+        self.setup_ground()
+
+    def setup_ground(self):
+        """Aerial photographs of the area for the plane view's ground, once a location is set.
+        The demo, screenshots and tests keep the drawn fields and fetch nothing."""
+        from . import ground, scene
+        old = getattr(self, "ground", None)
+        if old is not None:
+            old.stop()
+        self.ground = None
+        if not self.demo and not self.shot and self.cfg.get("ground_photos", True):
+            sc = self.view.scene
+            self.ground = ground.Ground(self.engine_cfg["lat"], self.engine_cfg["lon"], os.path.join(ROOT, "data", "ground"),
+                                        sc.ppd, sc.pw, scene.TOP)
+        self.view.scene.use_ground(self.ground)
 
     # --------------------------------------------------------- rotation -----
     def rotate(self, frame, now):
@@ -722,6 +739,8 @@ class App:
             if stats:
                 stats.add(t1 - t0, time.perf_counter() - t1, rects, self.fb)
         self.engine.routes.save()
+        if self.ground is not None:
+            self.ground.stop()
         if self.fb:
             self.fb.close()
         pg.quit()

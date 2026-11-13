@@ -20,7 +20,8 @@ main.CONFIG = os.path.join(ROOT, "data", "test_config.json")
 os.makedirs(os.path.dirname(main.CONFIG), exist_ok=True)
 with open(main.CONFIG, "w") as f:           # a wide range so the demo has plenty of aircraft to rotate through
     f.write('{"range_mi": 40, "output": "window"}')      # "window": on a Pi, never the real panel or its touch
-args = types.SimpleNamespace(demo=False, fullscreen=False, size="480x320", lat=None, lon=None,
+# demo=True: setting a location below must not switch to live traffic or fetch ground pictures.
+args = types.SimpleNamespace(demo=True, fullscreen=False, size="480x320", lat=None, lon=None,
                              screenshot=None, at="1", settings=None, fb=False, calibrate=False)
 app = main.App(args)
 W, H = app.W, app.H
@@ -296,6 +297,7 @@ tap(done.center)
 frames(20)
 assert not st.visible
 assert app.board.unit_label == "KM" and not app.unset
+assert app.demo and app.ground is None, "a test never goes online"
 assert abs(app.engine.obs.range_m - 10 * 1609.344) < 1, "the new range reached the tracker"
 assert app.engine.tracker.mode == "overhead", "the new mode reached the tracker"
 saved = json.load(open(main.CONFIG))
