@@ -120,12 +120,15 @@ class Backlight:
 class Stats:
     """Frame timing, printed every few seconds when "stats" is on. Shows up in the Pi's journal.
 
-    draw is the time to advance and repaint the flaps; push is the copy to the framebuffer;
-    lines is how many screen lines were sent, which is what the SPI link has to carry.
+    draw is the time to advance and repaint the flaps; push is the main loop's copy toward the
+    framebuffer; lines is how many screen lines were drawn. "sent" is what the framebuffer
+    thread passed on to the panel: several drawn frames can go out as one when the SPI link
+    is busy, and those lines are what the link has to carry.
     """
 
     def __init__(self, every=5.0):
         self.every, self.t0 = every, time.perf_counter()
+        self.sent0 = None
         self.reset()
 
     def reset(self):
@@ -143,11 +146,15 @@ class Stats:
         now = time.perf_counter()
         if now - self.t0 >= self.every:
             span = now - self.t0
+            sent = (fb.sent, fb.sent_lines) if fb is not None else None
             if self.n:
-                print("stats: %.1f frames/s, draw %.1f ms avg %.1f max, push %.1f ms avg %.1f max, %d lines/s"
-                      % (self.n / span, 1000 * self.draw / self.n, 1000 * self.draw_max,
-                         1000 * self.push / self.n, 1000 * self.push_max, self.lines / span), flush=True)
-            self.t0 = now
+                line = ("stats: %.1f frames/s, draw %.1f ms avg %.1f max, push %.1f ms avg %.1f max, %d lines/s"
+                        % (self.n / span, 1000 * self.draw / self.n, 1000 * self.draw_max,
+                           1000 * self.push / self.n, 1000 * self.push_max, self.lines / span))
+                if sent and self.sent0:
+                    line += "; sent %.1f/s, %d lines/s" % ((sent[0] - self.sent0[0]) / span, (sent[1] - self.sent0[1]) / span)
+                print(line, flush=True)
+            self.t0, self.sent0 = now, sent
             self.reset()
 
 
@@ -174,6 +181,9 @@ class App:
             w, h = args.size.lower().split("x")
             cfg["width"], cfg["height"] = int(w), int(h)
         self.shot = bool(args.screenshot)
+        if not self.shot:
+            from . import scene
+            scene.CACHE = os.path.join(ROOT, "data")       # the plane view's cloud field, built once
         self.fb = self.touch = None
         fbinfo = None
         mode = "fb" if args.fb else cfg.get("output", "auto")
@@ -699,6 +709,10 @@ class App:
         stats = Stats() if (self.cfg.get("stats") or getattr(self.args, "stats", False)) else None
         budget = self.fb.lines_per_second if self.fb else None     # what the link to the panel can carry
         lines = 0
+        # Each blit lets go of Python's lock, and while the sky is painting on its thread the
+        # main loop waits up to the switch interval to get it back. At the default 5 ms a card
+        # frame took a median 73 ms on a Pi Zero during a paint; at 1 ms, 39 ms.
+        sys.setswitchinterval(0.001)
         self.present(self.board.redraw())
         if self.touch and (self.args.calibrate or not self.cfg.get("touch_cal")):
             self.calibrate()                       # first run on the Pi, or asked for

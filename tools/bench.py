@@ -35,13 +35,14 @@ shm = "/dev/shm" if os.path.isdir("/dev/shm") else tempfile.gettempdir()
 handle, path = tempfile.mkstemp(prefix="overhead-bench-", dir=shm)
 with os.fdopen(handle, "wb") as f:
     f.write(bytes(W * 2 * H))
-fb = device.FbOut(path, W, H, 16, W * 2)
+fb = device.FbOut(path, W, H, 16, W * 2)        # waited for after each push: the times are the whole copy
 screen = fb.surface()               # what the app draws on when it runs on the Pi
 
 t0 = time.perf_counter()
 board = Board(screen, {"warm": False})
 print("build the board            %s   (%d modules, flap %dx%d)" % (ms(time.perf_counter() - t0), len(board.modules), board.U, board._ch(board.U)))
 fb.push(screen)
+fb.sync()
 
 
 def flip_everything(fps, label):
@@ -56,6 +57,7 @@ def flip_everything(fps, label):
         rects = board.update(1.0 / fps)
         b = time.perf_counter()
         fb.push(screen, rects)
+        fb.sync()
         c = time.perf_counter()
         draw += b - a
         push += c - b
@@ -79,12 +81,14 @@ for k in range(20):
     mods[-1].set((mods[-1].tgt + 1) % mods[-1].fs.n)
     while board.active:
         fb.push(screen, board.update(1 / 30))
+        fb.sync()
         n += 1
 print("one digit ticking          %s a frame" % ms((time.perf_counter() - t) / n))
 
 a = time.perf_counter()
 for _ in range(20):
     fb.push(screen)
+    fb.sync()
 print("push a whole frame         %s" % ms((time.perf_counter() - a) / 20))
 
 # tracker: 60 aircraft, as on a busy evening
@@ -115,6 +119,18 @@ normals = model.lit
 print("load one model             %s   (%d triangles, read once per type)" % (ms(time.perf_counter() - a), len(model.faces)))
 day = Sky(known=True, cloud_low=0.3, cloud_high=0.3, cloud_total=0.4, sun_elev=30.0, sun_az=200.0)
 scene = Scene(lw, lh)
+from overhead import scene as scene_mod  # noqa: E402
+scene_mod.CACHE = tempfile.mkdtemp(prefix="overhead-bench-")
+a = time.perf_counter()
+scene_mod.cloud_field(scene.pw, int(scene._y(0.0)) + 1, scene.ppd)
+print("build the cloud field      %s   (once, on the sky's thread; kept in data/ after that)" % ms(time.perf_counter() - a))
+scene_mod._FIELDS.clear()
+a = time.perf_counter()
+scene_mod.cloud_field(scene.pw, int(scene._y(0.0)) + 1, scene.ppd)
+print("read it back from disk     %s   (each start)" % ms(time.perf_counter() - a))
+for name in os.listdir(scene_mod.CACHE):
+    os.remove(os.path.join(scene_mod.CACHE, name))
+os.rmdir(scene_mod.CACHE)
 a = time.perf_counter()
 scene.pano = scene.paint(day)
 print("paint the sky panorama     %s   (%d x %d, on its own thread, when the light changes)" % (ms(time.perf_counter() - a), scene.pw, scene.ph))

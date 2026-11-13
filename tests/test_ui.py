@@ -318,6 +318,7 @@ view = app.view
 tap((W // 2, H // 2))
 assert view.visible and app.view_hex == app.cur, "a tap in the middle opens the plane view"
 assert view.scene._busy or view.scene.pano is not None, "the sky behind it is being painted, off the main loop"
+assert view._rough, "it slides in with the quick 1:1 picture"
 view.scene.wait()
 bands = []
 for _ in range(30):
@@ -325,6 +326,7 @@ for _ in range(30):
     if rr and 0 < view.off < H:
         bands.append(max(r.bottom for r in rr) - min(r.top for r in rr))
 assert view.off == H, view.off
+assert not view._rough, "once it stops, the smooth picture replaces the quick one"
 assert bands and max(bands) < H * 0.6, "the wipe repaints a band, not the screen: %s" % bands
 info = view.info
 assert info["type"] == demo_frame.sightings[0].plane.type and info["up"].endswith("UP")

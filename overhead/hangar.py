@@ -22,6 +22,7 @@ dragging it the smoothing is skipped.
 from __future__ import annotations
 
 import math
+import threading
 
 import pygame
 
@@ -172,6 +173,8 @@ class PlaneView:
         self._ease = None
         self._key = self._key_drawn = None
         self._text = self._text_drawn = None
+        self._rough = False                 # the model on show was drawn 1:1 while something moved
+        self._warm = None                   # the type whose model was last loaded ahead of time
         self._scope_img = None
         self.dirty = True
         self.shades = {}
@@ -211,9 +214,9 @@ class PlaneView:
         self._drag = self._ease = None
         self.off, self._drawn = 0.0, 0
         self.set(info)
+        self._go(self.H)                    # sliding in: the first picture is the quick one, the smooth one follows
         if self.dirty or self.panel is None:
             self._compose()
-        self._go(self.H)
 
     def close(self):
         self._go(0)
@@ -272,7 +275,13 @@ class PlaneView:
                 self.yaw = self.tilt = 0.0
                 self._ease = None
             self.set(self.info)
+        if self._rough and self.visible and self.info and not self._moving():
+            self._key_drawn, self.dirty = None, True        # still now: draw it again at full quality
         return self.dirty or int(self.off) != self._drawn
+
+    def _moving(self):
+        """Sliding, swinging back, or being dragged: frames should be quick rather than fine."""
+        return bool(self._anim or self._ease or (self._drag and self._drag[3]))
 
     def draw(self):
         """Paint what changed. Returns the rectangles to send to the display."""
@@ -341,10 +350,14 @@ class PlaneView:
         return self._glass
 
     def prepare(self, info):
-        """Draw the panel for this aircraft ahead of time, so opening it is instant."""
+        """Get ready to open on this aircraft: its sky starts painting and its model loads, both on
+        threads. The picture itself is drawn when the panel opens. Drawing it ahead of time, every
+        time the aircraft moved, cost the card up to 1.5 s of a Pi Zero's time each second it sat still."""
         self.set(info)
-        if self.dirty and not self.visible:
-            self._compose()
+        warm = (info["type"], info["category"])
+        if warm != self._warm:
+            self._warm = warm
+            threading.Thread(target=models.model_for, args=warm, daemon=True, name="model").start()
 
     def _compose(self):
         """Bring the panel up to date with the current data. Returns the screen rectangle that changed.
@@ -361,7 +374,7 @@ class PlaneView:
         model, exact = models.model_for(info["type"], info["category"])
         if self._key != self._key_drawn:
             sky = info["sky"]
-            moving = bool(self._ease or (self._drag and self._drag[3]))
+            moving = self._moving()
             low, zoom = (self.quick, 1) if moving else (self.big, 2)
             look_az, look_up = info["az"] + self.yaw, max(-89.0, min(89.0, info["elev"] + self.tilt))
             if moving:
@@ -388,7 +401,7 @@ class PlaneView:
                       1.0 if sky.sun_elev < -4 else 0.75)
             self._scope_img.blit(low if moving else pygame.transform.smoothscale(low, self.scope.size), (0, 0))
             self._scope_img.blit(self._glass_art(), (0, 0))
-            self._key_drawn = self._key
+            self._key_drawn, self._rough = self._key, moving
             changed = self.scope.copy()
         if self._text != self._text_drawn or self.panel is None:
             self._text_drawn = self._text

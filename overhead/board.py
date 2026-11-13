@@ -814,9 +814,10 @@ class Board:
         for key, (mods, align) in self.cells.items():
             self._spell(mods, str(d.get(key, "")), align)
         self.remark.set(self.remark.fs.index(d.get("remark", "")), random.uniform(0.0, 0.05))
-        self.view.on = self.view_red if empty else self.view_green
+        on = self.view_red if empty else self.view_green
+        if on is not self.view.on:                  # repaint only when the colour changes: this runs twice a second
+            self.view.on, self.view.dirty = on, True
         self.view.set((3 if alarm else 1) if empty else 1 if d.get("view") else 0)
-        self.view.dirty = True
         self.mil.set({0: 0, 1: 2, 2: 3}[int(d.get("mil", 0))])
 
     def set_pages(self, count, current, locked=False):
@@ -833,9 +834,10 @@ class Board:
 
     def set_status(self, left, right, ok=True):
         self.status = (left, right, ok)
-        self.led.on = self.led_green if ok else self.led_red
+        on = self.led_green if ok else self.led_red
+        if on is not self.led.on:
+            self.led.on, self.led.dirty = on, True
         self.led.set(1 if ok else 3)
-        self.led.dirty = True
 
     def set_dim(self, dim):
         dim = max(0.0, min(0.85, dim))

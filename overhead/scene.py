@@ -19,7 +19,10 @@ near the point overhead, where nothing has edges to notice.
 """
 from __future__ import annotations
 
+import hashlib
+import inspect
 import math
+import os
 import random
 import threading
 
@@ -138,6 +141,8 @@ def _noise(rng, w, h, cells_x, cells_y, octaves, amp=128):
 
 
 _FIELDS = {}
+CACHE = None            # a folder to keep the cloud field in between runs (the app sets data/), or None
+_MAGIC = b"OVERHEAD CLOUDS 1 "
 
 
 def _rows_through(field, pw, rows, table_for):
@@ -200,6 +205,11 @@ def cloud_field(pw, rows, ppd):
     hit = _FIELDS.get(key)
     if hit:
         return hit
+    path = _field_file(pw, rows, ppd) if CACHE else None
+    hit = _load_field(path, pw, rows) if path else None
+    if hit:
+        _FIELDS[key] = hit
+        return hit
     rng = random.Random(1234)
     size = 512
     half = size // 2
@@ -251,7 +261,60 @@ def cloud_field(pw, rows, ppd):
             return lift[k]
         out += [_rows_through(field, pw, rows, raise_low), seen]
     _FIELDS[key] = hit = (out[0], out[2], out[1], out[3])
+    if path:
+        _save_field(path, hit)
     return hit
+
+
+def _field_file(pw, rows, ppd):
+    """Where the cloud field for this panorama size is kept between runs. Building it takes about
+    6 seconds on a Pi Zero, so it is made once and read back after that.
+
+    The name carries a hash of the source of everything that shapes the field, so changing any
+    of that code (or TOP) builds a new one instead of reading old clouds. None if the source
+    can't be read."""
+    try:
+        h = hashlib.sha256(repr((TOP, pw, rows, round(ppd, 4))).encode())
+        for f in (cloud_field, _noise, _grey, _level, _rows_through, smooth):
+            h.update(inspect.getsource(f).encode())
+    except (OSError, TypeError):
+        return None
+    return os.path.join(CACHE, "clouds-%s.bin" % h.hexdigest()[:16])
+
+
+def _load_field(path, pw, rows):
+    """A saved cloud field, or None if there isn't one or it isn't exactly what this size needs."""
+    n, k = pw * rows, len(range(0, pw * rows, 29))
+    want = len(_MAGIC) + 2 * n + 2 * k
+    try:
+        with open(path, "rb") as f:
+            data = f.read(want + 1)
+    except OSError:
+        return None
+    if len(data) != want or not data.startswith(_MAGIC):
+        return None
+    data = data[len(_MAGIC):]
+    low_seen, high_seen = list(data[2 * n:2 * n + k]), list(data[2 * n + k:])
+    if low_seen != sorted(low_seen) or high_seen != sorted(high_seen):
+        return None
+    return data[:n], data[n:2 * n], low_seen, high_seen
+
+
+def _save_field(path, hit):
+    """Write the field next to its final name and rename it over, so a power cut leaves either the
+    old file or the new one. Fields for other sizes or older code are removed."""
+    folder = os.path.dirname(path)
+    low, high, low_seen, high_seen = hit
+    try:
+        os.makedirs(folder, exist_ok=True)
+        with open(path + ".tmp", "wb") as f:
+            f.write(_MAGIC + low + high + bytes(low_seen) + bytes(high_seen))
+        os.replace(path + ".tmp", path)
+        for name in os.listdir(folder):
+            if name.startswith("clouds-") and name.endswith(".bin") and name != os.path.basename(path):
+                os.remove(os.path.join(folder, name))
+    except OSError:
+        pass                                                     # no disk: build it again next run
 
 
 class Scene:
@@ -492,10 +555,9 @@ class Scene:
         How much of the sky each layer covers comes from the weather feed. The cover fraction
         picks a threshold in the cloud field; brightness above it becomes opacity, and the
         thickest parts are shaded toward the colour of a cloud's base. Everything after the
-        field itself is byte-table lookups and one blit per layer."""
+        field itself is byte-table lookups and blits, a strip of rows at a time."""
         pw, rows = self.pw, horizon + 1
         low, high, low_seen, high_seen = cloud_field(pw, rows, self.ppd)
-        n = pw * rows
         tint = None
         if lowc > 0.05:                                              # at sunrise and sunset the sun's side is warmer
             row = pygame.Surface((360, 1), 0, 32)
@@ -524,19 +586,26 @@ class Scene:
                 a = smooth(q, q + soft, v)
                 col = clip(mix(lit, shade, depth * smooth(thick0, thick1, v)))
                 at[v], rt[v], gt[v], bt[v] = int(255 * most * a), col[0], col[1], col[2]
-            buf = bytearray(4 * n)
-            buf[0::4], buf[1::4], buf[2::4], buf[3::4] = (field.translate(t) for t in (rt, gt, bt, at))
-            layer = pygame.image.frombytes(bytes(buf), (pw, rows), "RGBA")
-            if tint is not None:
-                layer.blit(tint, (0, 0), special_flags=pygame.BLEND_RGB_MULT)
-            # distant cloud fades into the haze along the horizon, like distant ground does
             edge = clip(bottom)
-            for i in range(band):
-                t = 0.7 * (i / band) ** 1.6
-                r = (0, rows - band + i, pw, 1)
-                layer.fill(clip((255 * (1 - t),) * 3), r, special_flags=pygame.BLEND_RGB_MULT)
-                layer.fill(clip([c * t for c in edge]), r, special_flags=pygame.BLEND_RGB_ADD)
-            pano.blit(layer, (0, 0))
+            haze = max(0, rows - band)
+            # A strip of rows at a time. pygame holds Python's lock through each call, and one
+            # alpha blit of the whole layer froze the card for half a second on a Pi Zero.
+            # In strips, no call is long and the main loop gets in between them.
+            for y0 in range(0, rows, 48):
+                y1 = min(rows, y0 + 48)
+                part = field[y0 * pw:y1 * pw]
+                buf = bytearray(4 * len(part))
+                buf[0::4], buf[1::4], buf[2::4], buf[3::4] = (part.translate(t) for t in (rt, gt, bt, at))
+                layer = pygame.image.frombytes(bytes(buf), (pw, y1 - y0), "RGBA")
+                if tint is not None:
+                    layer.blit(tint, (0, 0), (0, y0, pw, y1 - y0), special_flags=pygame.BLEND_RGB_MULT)
+                # distant cloud fades into the haze along the horizon, like distant ground does
+                for y in range(max(y0, haze), y1):
+                    t = 0.7 * ((y - (rows - band)) / band) ** 1.6
+                    r = (0, y - y0, pw, 1)
+                    layer.fill(clip((255 * (1 - t),) * 3), r, special_flags=pygame.BLEND_RGB_MULT)
+                    layer.fill(clip([c * t for c in edge]), r, special_flags=pygame.BLEND_RGB_ADD)
+                pano.blit(layer, (0, y0))
 
 
     @staticmethod

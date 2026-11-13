@@ -143,5 +143,40 @@ assert not sc2._busy, "nothing to do when the sky hasn't changed"
 sc2.request(day)
 sc2.wait()
 assert sc2.key == Scene.state(day) and sc2.take_fresh()
+
+# The cloud field is kept on disk between runs: read back, it is exactly what was built, and a
+# file that is cut short, padded or scrambled is ignored and the field built again.
+import tempfile  # noqa: E402
+
+from overhead import scene  # noqa: E402
+
+folder = tempfile.mkdtemp(prefix="overhead-test-")
+pw, rows = 360, 120
+try:
+    scene.CACHE = folder
+    scene._FIELDS.clear()
+    built = scene.cloud_field(pw, rows, 1.0)
+    files = os.listdir(folder)
+    assert len(files) == 1 and files[0].startswith("clouds-"), files
+    path = os.path.join(folder, files[0])
+    scene._FIELDS.clear()
+    assert scene.cloud_field(pw, rows, 1.0) == built, "read back as built"
+    good = open(path, "rb").read()
+    for bad in (good[:-1], good + b"x", b"X" + good[1:], good[:-3] + bytes([200, 100, 0])):
+        with open(path, "wb") as f:
+            f.write(bad)
+        scene._FIELDS.clear()
+        assert scene.cloud_field(pw, rows, 1.0) == built
+        assert open(path, "rb").read() == good, "a bad file is replaced by a good one"
+    scene._FIELDS.clear()
+    scene.cloud_field(pw + 2, rows, 1.0)                 # another size replaces it: one file at a time
+    assert len(os.listdir(folder)) == 1 and not os.path.exists(path)
+finally:
+    scene.CACHE = None
+    scene._FIELDS.clear()
+    for name in os.listdir(folder):
+        os.remove(os.path.join(folder, name))
+    os.rmdir(folder)
+
 print("panorama %d x %d painted in %.0f ms" % (sc.pw, sc.ph, took * 1000))
 print("ok")

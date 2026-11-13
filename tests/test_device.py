@@ -24,48 +24,62 @@ def rgb565(c):
 
 
 # ---- framebuffer: 16 bpp with a stride wider than the picture, as some drivers report ----
+# Twice: with the thread that does the copying (as on the Pi), and without it.
 W, H, STRIDE = 480, 320, 480 * 2 + 16
 tmp = tempfile.mkdtemp()
-path = os.path.join(tmp, "fb")
-with open(path, "wb") as f:
-    f.write(b"\xAA" * (STRIDE * H))
-fb = device.FbOut(path, W, H, 16, STRIDE)
-screen.fill((10, 20, 30))
-fb.push(screen, [pygame.Rect(0, 0, 4, 4)])                 # whatever is asked first, the whole frame goes out
+for threaded in (True, False):
+    path = os.path.join(tmp, "fb")
+    with open(path, "wb") as f:
+        f.write(b"\xAA" * (STRIDE * H))
+    fb = device.FbOut(path, W, H, 16, STRIDE, threaded=threaded)
+    assert (fb._thread is not None) == threaded
+    screen.fill((10, 20, 30))
+    fb.push(screen, [pygame.Rect(0, 0, 4, 4)])             # whatever is asked first, the whole frame goes out
+    fb.sync()
 
+    def scribble():
+        for y in range(H):
+            fb.mm[y * STRIDE:(y + 1) * STRIDE] = b"\xAA" * STRIDE
 
-def scribble():
-    for y in range(H):
-        fb.mm[y * STRIDE:(y + 1) * STRIDE] = b"\xAA" * STRIDE
+    def px(x, y):
+        off = y * STRIDE + x * 2
+        return struct.unpack("<H", fb.mm[off:off + 2])[0]
 
-
-assert struct.unpack("<H", fb.mm[(H - 1) * STRIDE + (W - 1) * 2:(H - 1) * STRIDE + W * 2])[0] == rgb565((10, 20, 30))
-scribble()
-red, green = (255, 0, 0), (0, 255, 0)
-pygame.draw.rect(screen, red, (100, 50, 40, 62))
-pygame.draw.rect(screen, green, (300, 200, 20, 30))
-fb.push(screen, [pygame.Rect(100, 50, 40, 62), pygame.Rect(300, 200, 20, 30)])
-
-
-def px(x, y):
-    off = y * STRIDE + x * 2
-    return struct.unpack("<H", fb.mm[off:off + 2])[0]
-
-
-assert px(100, 50) == rgb565(red) and px(139, 111) == rgb565(red)
-assert px(300, 200) == rgb565(green) and px(319, 229) == rgb565(green)
-assert px(99, 50) == 0xAAAA and px(140, 50) == 0xAAAA, "pixels beside a pushed rectangle must be left alone"
-assert px(100, 49) == 0xAAAA and px(100, 112) == 0xAAAA, "lines outside the band must be left alone"
-assert fb.mm[50 * STRIDE + W * 2:50 * STRIDE + W * 2 + 16] == b"\xAA" * 16, "stride padding untouched"
-# two rectangles on the same lines merge into one band covering the gap between them
-pygame.draw.rect(screen, green, (10, 50, 5, 5))
-fb.push(screen, [pygame.Rect(10, 50, 5, 5), pygame.Rect(200, 52, 5, 5)])
-assert px(10, 50) == rgb565(green) and px(60, 51) == rgb565((10, 20, 30))
-# full frame, and rectangles hanging off the edge are clipped
-fb.push(screen)
-assert px(0, 0) == rgb565((10, 20, 30)) and px(479, 319) == rgb565((10, 20, 30))
-fb.push(screen, [pygame.Rect(470, 310, 50, 50), pygame.Rect(-20, -20, 10, 10)])
-fb.close()
+    assert px(W - 1, H - 1) == rgb565((10, 20, 30))
+    scribble()
+    red, green = (255, 0, 0), (0, 255, 0)
+    pygame.draw.rect(screen, red, (100, 50, 40, 62))
+    pygame.draw.rect(screen, green, (300, 200, 20, 30))
+    fb.push(screen, [pygame.Rect(100, 50, 40, 62), pygame.Rect(300, 200, 20, 30)])
+    fb.sync()
+    assert px(100, 50) == rgb565(red) and px(139, 111) == rgb565(red)
+    assert px(300, 200) == rgb565(green) and px(319, 229) == rgb565(green)
+    assert px(99, 50) == 0xAAAA and px(140, 50) == 0xAAAA, "pixels beside a pushed rectangle must be left alone"
+    assert px(100, 49) == 0xAAAA and px(100, 112) == 0xAAAA, "lines outside the band must be left alone"
+    assert fb.mm[50 * STRIDE + W * 2:50 * STRIDE + W * 2 + 16] == b"\xAA" * 16, "stride padding untouched"
+    # two rectangles on the same lines merge into one band covering the gap between them
+    pygame.draw.rect(screen, green, (10, 50, 5, 5))
+    fb.push(screen, [pygame.Rect(10, 50, 5, 5), pygame.Rect(200, 52, 5, 5)])
+    fb.sync()
+    assert px(10, 50) == rgb565(green) and px(60, 51) == rgb565((10, 20, 30))
+    # full frame, and rectangles hanging off the edge are clipped
+    fb.push(screen)
+    fb.sync()
+    assert px(0, 0) == rgb565((10, 20, 30)) and px(479, 319) == rgb565((10, 20, 30))
+    fb.push(screen, [pygame.Rect(470, 310, 50, 50), pygame.Rect(-20, -20, 10, 10)])
+    # many pushes in a row, faster than they are written out: the last picture is what arrives
+    for i in range(200):
+        x = i % (W - 8)
+        screen.fill((i % 256, 40, 200 - i % 200), (x, 10 + i % 280, 8, 8))
+        fb.push(screen, [pygame.Rect(x, 10 + i % 280, 8, 8)])
+    fb.sync()
+    want = pygame.image.tobytes(screen, "RGB")
+    for x, y in ((0, 0), (5, 15), (100, 120), (191, 201), (300, 290), (479, 319)):
+        r, g, b = want[(y * W + x) * 3:(y * W + x) * 3 + 3]
+        assert px(x, y) == rgb565((r, g, b)), (threaded, x, y)
+    assert fb.sent >= 1 and fb.sent_lines >= H
+    fb.close()
+    assert fb.mm.closed, "closing lets go of the framebuffer"
 
 # 32 bpp
 path32 = os.path.join(tmp, "fb32")
@@ -73,6 +87,7 @@ with open(path32, "wb") as f:
     f.write(b"\x00" * (W * 4 * H))
 fb = device.FbOut(path32, W, H, 32, W * 4)
 fb.push(screen, [pygame.Rect(100, 50, 2, 2)])
+fb.sync()
 assert bytes(fb.mm[(50 * W + 100) * 4:(50 * W + 100) * 4 + 3]) == bytes([0, 0, 255]), "XRGB8888 is stored B, G, R"
 fb.close()
 

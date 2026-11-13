@@ -19,6 +19,11 @@ import time
 
 import pygame
 
+try:
+    import ctypes
+except ImportError:             # a Python built without it: push() copies on the caller's thread
+    ctypes = None
+
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 ABS_X, ABS_Y = 0, 1
 BTN_TOUCH = 330
@@ -84,9 +89,17 @@ class FbOut:
     The fast path is to draw on `surface()`: a pygame surface already in the panel's pixel
     format. Pushing a band of it is then one memory copy. Any other surface still works
     and is converted on the way through.
+
+    On an SPI panel, writing into the framebuffer waits whenever the driver is still sending
+    the last picture: up to 160 ms on a Pi Zero. A Python copy holds the interpreter lock all
+    that time, which froze the main loop and every other thread. So push() copies into a
+    buffer in ordinary memory and returns, and a thread moves the lines on to the framebuffer
+    with ctypes.memmove, which lets go of the lock while it waits. Pushes that arrive while the
+    thread is waiting are merged into its next copy, so the panel gets the latest picture and
+    never falls behind. `sync()` waits for the thread to catch up.
     """
 
-    def __init__(self, dev, w, h, bpp, stride):
+    def __init__(self, dev, w, h, bpp, stride, threaded=True):
         if bpp not in (16, 32):
             raise ValueError("unsupported framebuffer depth: %d" % bpp)
         self.size, self.stride, self.bytes = (w, h), stride, bpp // 8
@@ -98,6 +111,18 @@ class FbOut:
         self.full = pygame.Rect(0, 0, w, h)
         self._synced = False
         self.lines_per_second = spi_lines_per_second(dev, w, bpp)
+        self.sent = self.sent_lines = 0            # copies into the framebuffer, and the lines they spanned
+        self._pending = []                         # bands for the thread: [top, bottom, first byte, last byte]
+        self._cv = threading.Condition()
+        self._busy = self._stop = False
+        self._thread = None
+        if threaded and ctypes is not None:
+            self._stage = bytearray(self.mm[:])    # the picture as the panel should show it
+            self._out = bytearray(self._stage)     # the thread's own copy, steady while it is written out
+            self._dst = (ctypes.c_char * len(self._out)).from_buffer(self.mm)
+            self._src = (ctypes.c_char * len(self._out)).from_buffer(self._out)
+            self._thread = threading.Thread(target=self._pusher, daemon=True, name="panel")
+            self._thread.start()
 
     def surface(self):
         """A surface in the panel's own format. Draw on this and push() never has to convert."""
@@ -115,14 +140,6 @@ class FbOut:
         rects = [r for r in rects if r.w > 0 and r.h > 0]
         if not rects:
             return
-        # Merge into horizontal bands. The panel driver sends whole lines anyway.
-        bands = []
-        for r in sorted(rects, key=lambda r: r.top):
-            if bands and r.top <= bands[-1][1]:
-                b = bands[-1]
-                b[1], b[2], b[3] = max(b[1], r.bottom), min(b[2], r.left), max(b[3], r.right)
-            else:
-                bands.append([r.top, r.bottom, r.left, r.right])
         if self._native(surface):
             src = surface
         else:
@@ -131,27 +148,100 @@ class FbOut:
             for r in rects:
                 self.shadow.blit(surface, r, r)                 # format conversion happens here, in C
             src = self.shadow
-        pitch, n, mm, stride = src.get_pitch(), self.bytes, self.mm, self.stride
+        pitch, n, stride = src.get_pitch(), self.bytes, self.stride
+        # Merge into horizontal bands. The panel driver sends whole lines anyway. Where the
+        # surface's rows are laid out like the framebuffer's, a band is whole lines and one copy.
+        bands = _bands([(r.top, r.bottom, r.left * n, r.right * n) for r in rects])
+        if pitch == stride:
+            bands = [[top, bottom, 0, stride] for top, bottom, _, _ in bands]
         buf = src.get_buffer()                                  # locks the surface until released below
         view = memoryview(buf)
+        dst = self.mm if self._thread is None else self._stage
         try:
-            for top, bottom, left, right in bands:
-                if pitch == stride:                             # whole lines in one copy
-                    mm[top * stride:bottom * stride] = view[top * pitch:bottom * pitch]
+            with self._cv:
+                for top, bottom, a, b in bands:
+                    if a == 0 and b == stride:
+                        dst[top * stride:bottom * stride] = view[top * pitch:bottom * pitch]
+                    else:
+                        for y in range(top, bottom):
+                            dst[y * stride + a:y * stride + b] = view[y * pitch + a:y * pitch + b]
+                if self._thread is None:
+                    self.sent += 1
+                    self.sent_lines += bands[-1][1] - bands[0][0]
                 else:
-                    a, b = left * n, right * n
-                    for y in range(top, bottom):
-                        mm[y * stride + a:y * stride + b] = view[y * pitch + a:y * pitch + b]
+                    self._pending += bands
+                    self._cv.notify_all()
         finally:
             view.release()
             del buf
 
+    def _pusher(self):
+        cv, stage, out, stride = self._cv, self._stage, self._out, self.stride
+        dst, src = ctypes.addressof(self._dst), ctypes.addressof(self._src)
+        while True:
+            with cv:
+                while not self._pending and not self._stop:
+                    self._busy = False
+                    cv.notify_all()                             # for sync()
+                    cv.wait()
+                if not self._pending:
+                    self._busy = False
+                    cv.notify_all()
+                    return
+                self._busy = True
+                bands, self._pending = _bands(self._pending), []
+                for top, bottom, a, b in bands:                 # a steady snapshot to write out
+                    if a == 0 and b == stride:
+                        out[top * stride:bottom * stride] = stage[top * stride:bottom * stride]
+                    else:
+                        for y in range(top, bottom):
+                            out[y * stride + a:y * stride + b] = stage[y * stride + a:y * stride + b]
+            # This is where the wait for the panel happens, with no lock held by this thread.
+            for top, bottom, a, b in bands:
+                if a == 0 and b == stride:
+                    ctypes.memmove(dst + top * stride, src + top * stride, (bottom - top) * stride)
+                else:
+                    for y in range(top, bottom):
+                        ctypes.memmove(dst + y * stride + a, src + y * stride + a, b - a)
+            self.sent += 1
+            self.sent_lines += bands[-1][1] - bands[0][0]
+
+    def sync(self, timeout=5.0):
+        """Wait until everything pushed so far is in the framebuffer."""
+        if self._thread is None:
+            return
+        end = time.monotonic() + timeout
+        with self._cv:
+            while (self._pending or self._busy) and time.monotonic() < end:
+                self._cv.wait(0.05)
+
     def close(self):
+        t = self._thread
+        if t is not None:
+            with self._cv:
+                self._stop = True
+                self._cv.notify_all()
+            t.join(2.0)
+            if t.is_alive():
+                return              # stuck in the driver: the mapping goes when the process does
+            self._dst = self._src = None                        # let go of the mapping so it can close
         try:
             self.mm.close()
             os.close(self.fd)
         except Exception:
             pass
+
+
+def _bands(rows):
+    """[top, bottom, first byte, last byte] rows merged where they overlap or touch, top to bottom."""
+    out = []
+    for top, bottom, a, b in sorted(tuple(r) for r in rows):
+        if out and top <= out[-1][1]:
+            m = out[-1]
+            m[1], m[2], m[3] = max(m[1], bottom), min(m[2], a), max(m[3], b)
+        else:
+            out.append([top, bottom, a, b])
+    return out
 
 
 def calibration_targets(w, h):
