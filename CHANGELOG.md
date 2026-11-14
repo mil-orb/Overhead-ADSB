@@ -12,6 +12,7 @@ Faster on the Pi, with the same pictures.
 - Clouds are laid onto the sky in strips. One blit of the whole layer used to freeze the card for half a second on each repaint. A card frame during a sky repaint now takes 30 ms, worst 84 ms, down from 73 ms and 510 ms.
 - The status lamps were redrawn twice a second when nothing had changed, which sent 520 lines a second to an idle panel. They now redraw only when they change.
 - `--stats` also shows what reached the panel ("sent").
+- The touch tips show each time the Pi boots instead of only the first time. A restart of the app alone (an update, a crash) doesn't bring them back. On a PC, which has no boot id, they show on every start.
 
 ## 0.1.0 (2026-11-12)
 

@@ -149,7 +149,7 @@ After the reboot it asks for three taps to calibrate the touch panel, then shows
 
 <img src="docs/images/tips.png" width="360" alt="The touch tips screen: tap the sides for the previous and next aircraft, the middle for the plane, swipe up for settings">
 
-The first time it starts (after the touch calibration on a Pi) it shows these tips over the card. A tap puts them away, and Settings > Touch tips brings them back.
+Each time the Pi starts (after the touch calibration, the first time) it shows these tips over the card. A tap puts them away until the next boot; restarting the app alone, after an update, doesn't bring them back. Settings > Touch tips shows them any time. On a PC they show on every start.
 
 Every target is at least a third of the screen or 56 pixels tall, and nothing depends on reaching an edge, because the screen is small, resistive and sits in a case.
 

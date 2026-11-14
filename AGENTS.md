@@ -55,7 +55,7 @@ Read [docs/architecture.md](docs/architecture.md) for the full picture. The shor
 - `overhead/tracker.py`: turns aircraft into an ordered list for the card, on its own thread. The show modes live here.
 - `overhead/board.py`: the split-flap renderer. `FaceSet` holds pre-composed pictures of every half-window mid-flip; `Module` is one drum.
 - `overhead/hangar.py`: the plane view and its software 3D renderer. `overhead/models.py`: the aircraft meshes, generated or loaded from `models/`. `overhead/ground.py`: aerial photographs and night lights for the plane view's ground, fetched once per location and built in a low-priority child process. `overhead/scene.py`: the sky and ground behind the aircraft, painted on a thread from the sun, moon and weather.
-- `overhead/settings.py`: the settings sheet. `overhead/hints.py`: the touch tips screen shown on first start. `overhead/wifi.py`: `nmcli`, or stand-in networks on a PC.
+- `overhead/settings.py`: the settings sheet. `overhead/hints.py`: the touch tips screen, shown once each time the Pi boots. `overhead/wifi.py`: `nmcli`, or stand-in networks on a PC.
 - `overhead/device.py`: the Pi's framebuffer and touch panel, with no desktop in between.
 - `overhead/app.py`: config, input, the main loop.
 - `pi/`: the installer. `tools/`: developer tools. `tests/`: plain scripts of assertions.

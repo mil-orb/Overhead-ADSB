@@ -48,7 +48,7 @@ It asks for your password once and prints each step. On a Zero the package insta
 ssh -t pi@overhead.local "sudo reboot"
 ```
 
-After the reboot the board comes up in under a minute and asks for three taps to calibrate the touch panel. Use a fingernail or a stylus on each cross. If you miss, there's a redo in settings (Touch, Calibrate). Then a tips screen shows what tapping each part of the card does. Tap anywhere to put it away; it doesn't come back unless you ask for it in settings.
+After the reboot the board comes up in under a minute and asks for three taps to calibrate the touch panel. Use a fingernail or a stylus on each cross. If you miss, there's a redo in settings (Touch, Calibrate). Then a tips screen shows what tapping each part of the card does. Tap anywhere to put it away. It shows again each time the Pi boots, and any time from settings.
 
 Until a location is set it shows demo traffic. Swipe up, tap Location, and enter your latitude and longitude. Two decimal places is enough: it puts you within about a kilometre, which is all the app sends to the data feeds anyway.
 

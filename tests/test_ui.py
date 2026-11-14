@@ -87,14 +87,22 @@ assert b.count.text.startswith("2/"), b.count.text
 tap((W * 0.1, H // 2))
 assert app.cur == deck[0].hex
 
-# the touch tips: the tap that puts them away does nothing else, and they are remembered as seen
+# the touch tips: the tap that puts them away does nothing else. They show once per boot of the
+# computer: tapped away, they stay away through restarts of the app until it boots again.
 before = app.cur
+app.boot = "boot-one"
+assert app.tips_due()
 app.show_hints()
 assert app.hints_up
 tap((W * 0.8, H // 2))
 assert not app.hints_up and app.cur == before, "closing the tips must not step the card"
 with open(main.CONFIG) as f:
-    assert json.load(f)["hints_seen"] is True
+    assert json.load(f)["hints_boot"] == "boot-one"
+assert not app.tips_due(), "not again until the next boot"
+app.boot = "boot-two"
+assert app.tips_due(), "the next boot shows them again"
+app.boot = None
+assert app.tips_due(), "with no boot id (Windows, macOS), every start"
 app.show_hints()
 tap((W // 2, H // 2))
 assert not app.hints_up and not app.view.visible, "nor open the plane view"

@@ -58,7 +58,7 @@ DEFAULTS = {
     "fb_device": None,              # e.g. "/dev/fb1"; None picks the small panel
     "touch_device": None,           # e.g. "/dev/input/event0"; None finds the touch panel
     "touch_cal": None,              # written by the touch calibration screen
-    "hints_seen": False,            # the touch tips screen has been shown and tapped away
+    "hints_boot": None,             # the boot the touch tips were last tapped away in (they show once per boot)
     "ground_photos": True,          # plane view: aerial photographs of your area below the horizon (False: drawn fields, nothing fetched)
 }
 UNIT_M = {"mi": 1609.344, "km": 1000.0, "nm": 1852.0}
@@ -80,6 +80,16 @@ def load_config():
         if cfg.pop("show_hidden") and cfg.get("mode") == "view":
             cfg["mode"] = "all"
     return cfg
+
+
+def boot_id():
+    """Something that changes each time the computer starts: Linux's boot id. None where there is
+    no such thing (Windows, macOS), and then the touch tips show on every start."""
+    try:
+        with open("/proc/sys/kernel/random/boot_id", "r", encoding="ascii") as f:
+            return f.read(64).strip() or None
+    except (OSError, ValueError):
+        return None
 
 
 def save_config(cfg):
@@ -230,6 +240,7 @@ class App:
         self.wifi = get_wifi(real=not self.shot)      # a screenshot never shows or touches real networks
         self.press = None
         self.hints_up = False           # the touch tips screen is showing
+        self.boot = boot_id()
         self.fast = False
         self.running = True
         self.sim = 1_750_000_000.0 if self.shot else None
@@ -503,10 +514,15 @@ class App:
         self.hints_up = True
         self.present([hints.draw(self.scr, self.board, self.scr.copy())])
 
+    def tips_due(self):
+        """True when the touch tips haven't been tapped away since the Pi last started. A restart of
+        the app alone (an update, a crash) doesn't bring them back."""
+        return self.boot is None or self.boot != self.cfg.get("hints_boot")
+
     def close_hints(self):
         self.hints_up = False
-        if not self.cfg.get("hints_seen"):
-            self.cfg["hints_seen"] = True
+        if self.tips_due():
+            self.cfg["hints_boot"] = self.boot
             try:
                 save_config(self.cfg)
             except Exception as e:
@@ -716,8 +732,8 @@ class App:
         self.present(self.board.redraw())
         if self.touch and (self.args.calibrate or not self.cfg.get("touch_cal")):
             self.calibrate()                       # first run on the Pi, or asked for
-        if not self.cfg.get("hints_seen"):
-            self.show_hints()                      # once, so the touch zones aren't a guessing game
+        if self.tips_due():
+            self.show_hints()                      # each time the Pi starts, so the touch zones aren't a guessing game
         while self.running:
             moving = self.board.busy or self.settings.visible or self.view.visible or self.press
             rate = fps if moving else 20
